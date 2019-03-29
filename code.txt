@@ -1,0 +1,89 @@
+libname pathfile 'C:\Users\JWD\Desktop\Reporting\Project4';
+ 
+data pro04;
+set pathfile.Breact_cancer_CTC;
+run;
+
+***************************************;
+           *define group;
+***************************************;
+data data02;
+set pro04;
+if BLAge<=50 then age_gp=1;
+if BLAge>50 then age_gp=2;
+label age_gr="1= <=50 years old; 2= >50 years old";
+
+if BLCTC<=5 then ctc_gp=1;
+if BLCTC>5 then ctc_gp=2;
+label ctc_gr="1= <=5CTC/7.5ml; 2= >5CTC/7.5ml";
+
+if TxType="C" then txttype_gp="C";
+if TxType="M" then txttype_gp="M";
+if TxType="H" then txttype_gp="H";
+if TxType="C / H" or TxType="C / M" or TxType="H / C" or TxType="H / M" or TxType="M / C" or TxType="M / H" 
+then txttype_gp="T";
+label txttype_gr="C= Chemotherapy; M= Molecular therapy; H= Hormone therapy; T= HMC a combination therapy";
+
+run;
+
+data data02;
+set data02;
+if BLCTC=. then delete;
+if txttype_gp="" then delete;
+run;
+proc contents data=data02;run;
+
+
+
+**************************************;
+          *Survival Analysis;
+**************************************;
+
+*********;
+*model_01;
+*********;
+%macro model01(var1=,var2=,var3=);
+proc lifetest data=data02 notable plots=(s(test));
+time &var1*&var2(0);
+strata &var3/TEST=(LOGRANK WILCOXON TARONE PETO);
+run;
+%mend model01;
+
+
+**For PFS;
+%model01(var1=PFS_BL,var2=Prog,var3=ctc_gp);
+%model01(var1=PFS_BL,var2=Prog,var3=age_gp);
+%model01(var1=PFS_BL,var2=Prog,var3=txttype_gp);
+%model01(var1=PFS_BL,var2=Prog,var3=StudyNum);
+
+
+**For OS_BL;
+%model01(var1=OS_BL,var2=Dead,var3=ctc_gp);
+%model01(var1=OS_BL,var2=Dead,var3=age_gp);
+%model01(var1=OS_BL,var2=Dead,var3=txttype_gp);
+%model01(var1=OS_BL,var2=Dead,var3=StudyNum);
+
+proc phreg data=data02;
+class ctc_gp age_gp txttype_gp StudyNum;
+model PFS_BL*Prog(0)=ctc_gp age_gp/rl ;*ties=efron;* txttype_gp StudyNum;
+assess PH/resample CRpanel ; 
+run;
+
+proc phreg data=data02;
+class ctc_gp age_gp;
+model PFS_BL*Prog(0)=ctc_gp age_gp/rl ;*ties=efron;* txttype_gp StudyNum;
+assess PH/resample CRpanel ; 
+run;
+
+proc phreg data=data02;
+class ctc_gp age_gp txttype_gp StudyNum;
+model OS_BL*Dead(0)=ctc_gp age_gp txttype_gp /rl; *ties=efron;
+assess PH/resample CRpanel ; 
+run;
+
+proc phreg data=data02;
+class ctc_gp age_gp txttype_gp;
+model OS_BL*Dead(0)=ctc_gp age_gp txttype_gp /rl; *ties=efron;
+strata StudyNum;
+assess PH/resample CRpanel ; 
+run;
